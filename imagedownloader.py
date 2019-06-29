@@ -28,6 +28,25 @@ def fetch_link(url):
     return False
 
 
+def fetch_imglinks(url):
+    # requests_htmlで画像リンクを取得できない場合使用
+    from bs4 import BeautifulSoup
+    from urllib.parse import urljoin
+    import requests
+    import re
+
+    hostname = re.search(r'^http(s)?://[\w\d.-_][^/]+', url)
+
+    r = requests.get(url)
+    soup = BeautifulSoup(r.text, 'lxml')
+    return [
+        urljoin(hostname[0], link['src'])
+        for link in soup.select('img[src]')
+        if link['src'].endswith(file_ext)
+        and link['src'].startswith('/')
+    ]
+
+
 def _to_parse(url):
     r = urlparse(url)
     domain = r.netloc
@@ -59,7 +78,13 @@ def to_create_image_links(url):
         link for link in response.html.absolute_links
         if link.endswith(file_ext)
         ]
+
     links = list(map(trim_escape_text, links))
+    if links:
+        return links, fetch_article_title(response)
+
+    # requests_htmlで取得できなかった場合
+    links = fetch_imglinks(url)
     if links:
         return links, fetch_article_title(response)
     return False
@@ -108,7 +133,7 @@ def is_existing_files(links, save_path):
     return False
 
 
-def put_message(msg):
+def put_message(msg=''):
     sys.stdout.write(msg + '\n')
     sys.stdout.flush()
 
@@ -129,6 +154,7 @@ def get_argv():
 
 def retry_message():
     py_file, url = get_argv()
+    put_message()
     put_message('Please retry')
     put_message(f'python {py_file} {url}')
 
@@ -136,6 +162,7 @@ def retry_message():
 def uncompleted_links_message(incomplete_link):
     if incomplete_link:
         msg = 'Download uncompleted'
+        put_message()
         put_message(msg)
         msg = "\n".join(incomplete_link)
         put_message(msg)
@@ -170,7 +197,7 @@ def do_download_links(links, save_path):
 
 def main():
     parser = ArgumentParser()
-    parser.add_argument('arg', nargs='+', type=str) #list
+    parser.add_argument('arg', nargs='+', type=str)
     args = parser.parse_args()
 
     if args.arg:
@@ -185,7 +212,7 @@ def main():
             if not to_create_save_directory(save_path):
                 # save_pathが存在しなければ、新規作成し、linksをダウンロード
                 # 既存ならば、不足分をチェックし、不足分のリストを返す。
-                links = is_existing_files(links, save_path) # Falseならば
+                links = is_existing_files(links, save_path)
 
             if links:
                 put_message(article_title)
